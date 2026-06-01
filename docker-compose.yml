@@ -10,6 +10,7 @@ services:
       - "5440:5432"
     volumes:
       - querysense-pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
 
   redis:
     image: redis:7

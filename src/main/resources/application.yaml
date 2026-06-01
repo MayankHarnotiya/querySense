@@ -3,11 +3,16 @@ spring:
     name: querySense
 
   datasource:
-    url: jdbc:postgresql://localhost:5440/querysense
-    username: querysense
-    password: querysense
-    hikari:
-      connection-init-sql: SET TIME ZONE 'Asia/Kolkata'
+    app:
+      jdbc-url: jdbc:postgresql://localhost:5440/querysense
+      username: querysense
+      password: querysense
+      driver-class-name: org.postgresql.Driver
+    analytics:
+      jdbc-url: jdbc:postgresql://localhost:5440/analytics
+      username: querysense
+      password: querysense
+      driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
