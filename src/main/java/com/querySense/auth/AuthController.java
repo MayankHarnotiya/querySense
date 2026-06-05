@@ -18,13 +18,39 @@ public class AuthController {
     private final UserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final UserRepository userRepository;
 
     public AuthController(UserDetailsService userDetailsService,
                           PasswordEncoder passwordEncoder,
-                          JwtService jwtService) {
+                          JwtService jwtService,
+                          UserRepository userRepository) {
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.userRepository = userRepository;
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<Map<String, String>> register(@RequestBody RegisterRequest request) {
+        if (request.username() == null || request.username().isBlank()
+                || request.password() == null || request.password().isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Username and password are required."));
+        }
+        if (userRepository.existsByUsername(request.username())) {
+            return ResponseEntity.status(409)   // 409 Conflict
+                    .body(Map.of("error", "Username already taken."));
+        }
+
+        UserEntity user = new UserEntity(
+                request.username(),
+                passwordEncoder.encode(request.password()),   // hash before saving
+                "USER"
+        );
+        userRepository.save(user);
+
+        return ResponseEntity.status(201)   // 201 Created
+                .body(Map.of("message", "User registered successfully."));
     }
 
     @PostMapping("/login")
@@ -32,10 +58,9 @@ public class AuthController {
         UserDetails user;
         try {
             user = userDetailsService.loadUserByUsername(request.username());
-        } catch (Exception e) {
-            return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
-        }
-
+        }  catch (Exception e) {
+        return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
+    }
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }

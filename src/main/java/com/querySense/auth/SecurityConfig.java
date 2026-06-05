@@ -41,14 +41,5 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    // A demo user for now (in-memory). We can move users into the querysense DB next.
-    @Bean
-    public UserDetailsService userDetailsService(PasswordEncoder encoder) {
-        UserDetails demo = User.builder()
-                .username("demo")
-                .password(encoder.encode("demo123"))
-                .roles("USER")
-                .build();
-        return new InMemoryUserDetailsManager(demo);
-    }
+    
 }
