@@ -10,8 +10,8 @@ spring:
       driver-class-name: org.postgresql.Driver
     analytics:
       jdbc-url: jdbc:postgresql://localhost:5440/analytics
-      username: querysense
-      password: querysense
+      username: analytics_readonly
+      password: readonly
       driver-class-name: org.postgresql.Driver
 
   jpa:
