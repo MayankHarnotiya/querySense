@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.security.Principal;
 
 import java.util.List;
 import java.util.Map;
@@ -46,10 +47,13 @@ public class QueryController {
     @PostMapping("/query")
     public ResponseEntity<Map<String, Object>> query(
             @Valid @RequestBody QueryRequest request,
-            HttpServletRequest httpRequest) {
+            HttpServletRequest httpRequest,
+            Principal principal) {
 
         // 0) Rate limit — by caller IP for now
-        String clientId = httpRequest.getRemoteAddr();
+        String clientId = (principal != null)
+                ? principal.getName()                 // the authenticated username
+                : httpRequest.getRemoteAddr();        // fallback (shouldn't happen on a secured endpoint)
         if (!rateLimitService.allow(clientId)) {
             return ResponseEntity
                     .status(HttpStatus.TOO_MANY_REQUESTS)   // 429
