@@ -29,8 +29,9 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())   // stateless JWT API → CSRF not needed
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**", "/ping").permitAll()  // public
-                        .anyRequest().authenticated())                     // everything else needs a token
+                        .requestMatchers("/auth/**", "/ping").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")   // ← add this
+                        .anyRequest().authenticated())                   // everything else needs a token
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

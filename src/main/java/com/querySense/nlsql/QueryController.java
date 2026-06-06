@@ -1,10 +1,12 @@
 package com.querySense.nlsql;
 
+import com.querySense.audit.AuditService;
 import com.querySense.cache.QueryCacheService;
 import com.querySense.cache.RateLimitService;
 import com.querySense.execution.SqlExecutionService;
 import com.querySense.safety.SchemaValidator;
 import com.querySense.safety.SqlSafetyValidator;
+import com.querySense.safety.UnsafeSqlException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,8 +15,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import java.security.Principal;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,19 +31,22 @@ public class QueryController {
     private final SqlExecutionService sqlExecutionService;
     private final QueryCacheService queryCacheService;
     private final RateLimitService rateLimitService;
+    private final AuditService auditService;
 
     public QueryController(NlToSqlService nlToSqlService,
                            SqlSafetyValidator sqlSafetyValidator,
                            SchemaValidator schemaValidator,
                            SqlExecutionService sqlExecutionService,
                            QueryCacheService queryCacheService,
-                           RateLimitService rateLimitService) {
+                           RateLimitService rateLimitService,
+                           AuditService auditService) {
         this.nlToSqlService = nlToSqlService;
         this.sqlSafetyValidator = sqlSafetyValidator;
         this.schemaValidator = schemaValidator;
         this.sqlExecutionService = sqlExecutionService;
         this.queryCacheService = queryCacheService;
         this.rateLimitService = rateLimitService;
+        this.auditService = auditService;
     }
 
     @PostMapping("/query")
@@ -50,13 +55,13 @@ public class QueryController {
             HttpServletRequest httpRequest,
             Principal principal) {
 
-        // 0) Rate limit — by caller IP for now
+        // 0) Rate limit — keyed to the authenticated username
         String clientId = (principal != null)
-                ? principal.getName()                 // the authenticated username
-                : httpRequest.getRemoteAddr();        // fallback (shouldn't happen on a secured endpoint)
+                ? principal.getName()
+                : httpRequest.getRemoteAddr();
         if (!rateLimitService.allow(clientId)) {
             return ResponseEntity
-                    .status(HttpStatus.TOO_MANY_REQUESTS)   // 429
+                    .status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of("error", "Rate limit exceeded. Try again shortly."));
         }
 
@@ -73,21 +78,27 @@ public class QueryController {
             ));
         }
 
-        // 2) Miss → full pipeline
-        String sql = nlToSqlService.generateSql(question);
-        sqlSafetyValidator.validate(sql);
-        schemaValidator.validate(sql);
-        List<Map<String, Object>> rows = sqlExecutionService.run(sql);
+        // 2) Miss → full pipeline (with auditing)
+        String sql = null;
+        try {
+            sql = nlToSqlService.generateSql(question);
+            sqlSafetyValidator.validate(sql);
+            schemaValidator.validate(sql);
+            List<Map<String, Object>> rows = sqlExecutionService.run(sql);
 
-        // 3) Store for next time
-        queryCacheService.put(question, rows);
+            queryCacheService.put(question, rows);
+            auditService.record(clientId, question, sql, "SUCCESS", rows.size(), null);
 
-        return ResponseEntity.ok(Map.of(
-                "question", question,
-                "generatedSql", sql,
-                "rowCount", rows.size(),
-                "rows", rows,
-                "cached", false
-        ));
+            return ResponseEntity.ok(Map.of(
+                    "question", question,
+                    "generatedSql", sql,
+                    "rowCount", rows.size(),
+                    "rows", rows,
+                    "cached", false
+            ));
+        } catch (UnsafeSqlException ex) {
+            auditService.record(clientId, question, sql, "BLOCKED", null, ex.getMessage());
+            throw ex;   // GlobalExceptionHandler turns this into a clean 400
+        }
     }
 }
