@@ -22,13 +22,13 @@ public class QueryCacheService {
         this.objectMapper = objectMapper;
     }
 
-    private String keyFor(String question) {
-        return "querycache:" + question.trim().toLowerCase();
+    private String keyFor(String question, int page, int size) {
+        return "querycache:" + question.trim().toLowerCase() + ":p" + page + ":s" + size;
     }
 
-    public Optional<List<Map<String, Object>>> get(String question) {
+    public Optional<List<Map<String, Object>>> get(String question, int page, int size) {
         try {
-            String json = redis.opsForValue().get(keyFor(question));
+            String json = redis.opsForValue().get(keyFor(question, page, size));
             if (json == null) {
                 return Optional.empty();
             }
@@ -36,17 +36,16 @@ public class QueryCacheService {
                     objectMapper.readValue(json, new TypeReference<>() {});
             return Optional.of(rows);
         } catch (Exception e) {
-            // a cache miss or read error must never break the request
             return Optional.empty();
         }
     }
 
-    public void put(String question, List<Map<String, Object>> rows) {
+    public void put(String question, List<Map<String, Object>> rows, int page, int size) {
         try {
             String json = objectMapper.writeValueAsString(rows);
-            redis.opsForValue().set(keyFor(question), json, TTL);
+            redis.opsForValue().set(keyFor(question, page, size), json, TTL);
         } catch (Exception e) {
-            // caching failures are non-fatal; just skip caching
+            // caching failures are non-fatal
         }
     }
 }

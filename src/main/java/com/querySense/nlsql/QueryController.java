@@ -67,11 +67,19 @@ public class QueryController {
 
         String question = request.question();
 
-        // 1) Cache hit? Return immediately — no AI, no DB.
-        Optional<List<Map<String, Object>>> cached = queryCacheService.get(question);
+        // Effective paging: defaults + a hard cap on size
+        int page = (request.page() != null && request.page() >= 0) ? request.page() : 0;
+        int size = (request.size() != null && request.size() > 0)
+                ? Math.min(request.size(), 200)   // cap at 200 rows per page
+                : 50;                             // default page size
+
+        // 1) Cache hit? (per question + page + size)
+        Optional<List<Map<String, Object>>> cached = queryCacheService.get(question, page, size);
         if (cached.isPresent()) {
             return ResponseEntity.ok(Map.of(
                     "question", question,
+                    "page", page,
+                    "size", size,
                     "rowCount", cached.get().size(),
                     "rows", cached.get(),
                     "cached", true
@@ -84,21 +92,23 @@ public class QueryController {
             sql = nlToSqlService.generateSql(question);
             sqlSafetyValidator.validate(sql);
             schemaValidator.validate(sql);
-            List<Map<String, Object>> rows = sqlExecutionService.run(sql);
+            List<Map<String, Object>> rows = sqlExecutionService.run(sql, page, size);
 
-            queryCacheService.put(question, rows);
+            queryCacheService.put(question, rows, page, size);
             auditService.record(clientId, question, sql, "SUCCESS", rows.size(), null);
 
             return ResponseEntity.ok(Map.of(
                     "question", question,
                     "generatedSql", sql,
+                    "page", page,
+                    "size", size,
                     "rowCount", rows.size(),
                     "rows", rows,
                     "cached", false
             ));
         } catch (UnsafeSqlException ex) {
             auditService.record(clientId, question, sql, "BLOCKED", null, ex.getMessage());
-            throw ex;   // GlobalExceptionHandler turns this into a clean 400
+            throw ex;
         }
     }
 }

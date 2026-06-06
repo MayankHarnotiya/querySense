@@ -17,7 +17,10 @@ public class SqlExecutionService {
         this.analyticsJdbcTemplate = analyticsJdbcTemplate;
     }
 
-    public List<Map<String, Object>> run(String sql) {
-        return analyticsJdbcTemplate.queryForList(sql);
+    public List<Map<String, Object>> run(String sql, int page, int size) {
+        int offset = page * size;
+        // Wrap the validated SELECT as a subquery and page over it
+        String paginated = "SELECT * FROM (" + sql + ") AS qs_sub LIMIT ? OFFSET ?";
+        return analyticsJdbcTemplate.queryForList(paginated, size, offset);
     }
 }
