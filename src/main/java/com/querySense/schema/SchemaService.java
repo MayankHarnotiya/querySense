@@ -36,7 +36,10 @@ public class SchemaService {
                 analyticsJdbcTemplate.queryForList(sql, String.class)
         );
     }
-
+    /** Clears the cached schema so it is rebuilt (e.g. after a new table is uploaded). */
+    public void refresh() {
+        cachedSchema = null;
+    }
     private String loadSchema() {
         String sql = """
                 SELECT table_name, column_name

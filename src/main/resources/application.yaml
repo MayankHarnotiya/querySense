@@ -13,7 +13,11 @@ spring:
       username: analytics_readonly
       password: readonly
       driver-class-name: org.postgresql.Driver
-
+    analytics-admin:
+      jdbc-url: jdbc:postgresql://localhost:5440/analytics
+      username: querysense
+      password: querysense
+      driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       ddl-auto: update
