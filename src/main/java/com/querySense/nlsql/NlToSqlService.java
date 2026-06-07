@@ -28,6 +28,13 @@ public class NlToSqlService {
 
                 Rules:
                 - Use ONLY the tables and columns listed above. Do not invent names.
+                - Use ONLY the tables needed to answer the question. Do NOT join other
+                  tables unless the question clearly requires combining them.
+                - Every table alias you use in SELECT, WHERE, GROUP BY, or ORDER BY must be
+                  defined in the FROM/JOIN clause. For a single-table query, prefer no alias.
+                - For text filters, match case-insensitively using ILIKE so the user's wording
+                  matches the stored values regardless of capitalization.
+                  Example: WHERE category ILIKE 'electronics'
                 - Output ONLY the raw SQL. No explanations, no markdown, no backticks.
                 - Use a single SELECT statement only.
                 """.formatted(schema);
