@@ -4,40 +4,60 @@ spring:
 
   datasource:
     app:
-      jdbc-url: jdbc:postgresql://localhost:5440/querysense
-      username: querysense
-      password: querysense
+      jdbc-url: ${APP_DB_URL:jdbc:postgresql://localhost:5440/querysense}
+      username: ${APP_DB_USERNAME:querysense}
+      password: ${APP_DB_PASSWORD:querysense}
       driver-class-name: org.postgresql.Driver
+      maximum-pool-size: 3
+      minimum-idle: 0
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 30000
     analytics:
-      jdbc-url: jdbc:postgresql://localhost:5440/analytics
-      username: analytics_readonly
-      password: readonly
+      jdbc-url: ${ANALYTICS_DB_URL:jdbc:postgresql://localhost:5440/analytics}
+      username: ${ANALYTICS_DB_USERNAME:analytics_readonly}
+      password: ${ANALYTICS_DB_PASSWORD:readonly}
       driver-class-name: org.postgresql.Driver
+      maximum-pool-size: 3
+      minimum-idle: 0
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 30000
     analytics-admin:
-      jdbc-url: jdbc:postgresql://localhost:5440/analytics
-      username: querysense
-      password: querysense
+      jdbc-url: ${ANALYTICS_ADMIN_DB_URL:jdbc:postgresql://localhost:5440/analytics}
+      username: ${ANALYTICS_ADMIN_DB_USERNAME:querysense}
+      password: ${ANALYTICS_ADMIN_DB_PASSWORD:querysense}
       driver-class-name: org.postgresql.Driver
+      maximum-pool-size: 2
+      minimum-idle: 0
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 30000
+
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: ${SHOW_SQL:true}
     properties:
       hibernate:
         format_sql: true
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
 
   ai:
-    ollama:
-      base-url: http://localhost:11434
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.groq.com/openai/v1}
+      api-key: ${GROQ_API_KEY}
       chat:
         options:
-          model: qwen2.5-coder:7b
+          model: ${OPENAI_MODEL:llama-3.3-70b-versatile}
           temperature: 0.0
 
 server:
-  port: 8084
+  port: ${PORT:8084}
