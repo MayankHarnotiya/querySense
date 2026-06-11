@@ -11,4 +11,4 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"
 EXPOSE 8084
-ENTRYPOINT ["sh","-c","java $JAVA_OPTS docker build -t querysense .-jar app.jar"]
+ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
