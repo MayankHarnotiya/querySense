@@ -2,12 +2,16 @@
 
 A natural-language-to-SQL analytics API. Users upload a dataset (CSV), then ask questions
 about it in plain English — *"total revenue by region"*, *"top 5 customers by spend"* — and
-get back real query results. A local LLM translates English into SQL; everything that makes
-that **safe and production-grade** is deterministic backend engineering. Built with Spring
-Boot, Spring Security, Spring AI (Ollama), Redis, and PostgreSQL, with a React frontend.
+get back real query results. A hosted LLM (Groq) translates English into SQL; everything that
+makes that **safe and production-grade** is deterministic backend engineering. Built with
+Spring Boot, Spring Security, Spring AI, Redis, and PostgreSQL, with a React frontend.
 
-🌐 **Live demo:** _deploying soon — link coming_
-📦 **Stack:** Java 17 · Spring Boot 4 · Spring AI (Ollama) · JSQLParser · PostgreSQL · Redis · React 18 · Docker
+🌐 **Live demo:** **https://query-sense-frontend.vercel.app**
+🔌 **Live API:** **https://querysense-api.onrender.com/ping**
+⏳ *Note: the API runs on a free tier that sleeps when idle — the first request after a quiet
+period can take ~50 seconds to wake up, then it's fast.*
+
+📦 **Stack:** Java 17 · Spring Boot 4 · Spring AI (Groq) · JSQLParser · PostgreSQL (Neon) · Redis (Upstash) · React 18 · Docker · Render · Vercel
 
 > **The core idea:** the AI does exactly *one* narrow job — turning a question into a SQL
 > `SELECT`. It is never trusted. Every generated query is run through a deterministic safety
@@ -20,7 +24,7 @@ Boot, Spring Security, Spring AI (Ollama), Redis, and PostgreSQL, with a React f
 ## What It Does
 
 - 📤 **Upload your own data** — drop a CSV; it's parsed, typed, and loaded into a real table
-- 🗣️ **Ask in plain English** — questions are translated to SQL by a local LLM (Ollama)
+- 🗣️ **Ask in plain English** — questions are translated to SQL by a hosted LLM (Groq)
 - 🛡️ **Multi-layer SQL safety** — every query is parsed and validated before it touches the DB
 - 🔒 **Read-only execution** — queries run as a DB user that physically cannot write or alter data
 - 👤 **JWT auth & registration** — secure login with BCrypt-hashed passwords and signed tokens
@@ -39,15 +43,16 @@ Boot, Spring Security, Spring AI (Ollama), Redis, and PostgreSQL, with a React f
 | Backend Language | Java 17 |
 | Backend Framework | Spring Boot 4.0.6 |
 | Security | Spring Security 7, JWT (JJWT 0.12.6), BCrypt |
-| AI / NL→SQL | Spring AI · Ollama (`qwen2.5-coder`, local) |
+| AI / NL→SQL | Spring AI · Groq (`llama-3.3-70b-versatile`, hosted, OpenAI-compatible) |
 | SQL Safety | JSQLParser 5.1 (parse + validate generated SQL) |
 | Database | PostgreSQL (app DB + analytics DB) · Hibernate 7 · HikariCP |
 | Cache / Rate limiting | Redis (caching + fixed-window per-user limits) |
 | JSON | Jackson 3 (`tools.jackson`) |
 | Frontend | React 18 · Vite 5 · Tailwind CSS 3 |
 | Frontend Libraries | Framer Motion · lucide-react |
-| Container | Docker (PostgreSQL + Redis via Compose) |
+| Container | Docker (multi-stage build; PostgreSQL + Redis via Compose locally) |
 | CSV Ingestion | Apache Commons CSV |
+| Hosting (live) | Render (API) · Vercel (frontend) · Neon (PostgreSQL) · Upstash (Redis) |
 
 ---
 
@@ -55,20 +60,21 @@ Boot, Spring Security, Spring AI (Ollama), Redis, and PostgreSQL, with a React f
 
 A single Spring Boot service backed by **three datasources** (one for app data, two for the
 analytics database — a privileged one for ingestion and a read-only one for querying), plus a
-React frontend.
+React frontend. In production the LLM is a **hosted Groq API** (no GPU needed), and Postgres
+and Redis are managed cloud services.
 
 ```
                     ┌────────────────────────────┐
-                    │   querysense-frontend (SPA) │   React · Vite · Tailwind
+                    │   querysense-frontend (SPA) │   React · Vite · Tailwind  (Vercel)
                     └──────────────┬─────────────┘
                                    │  /auth/*  ·  /api/*   (Bearer JWT)
                                    ▼
                     ┌────────────────────────────┐
-                    │      QuerySense API         │   Spring Boot
+                    │      QuerySense API         │   Spring Boot  (Render, Docker)
                     │  Auth · NL→SQL · Safety ·   │
                     │  Cache · Audit · Ingest     │
                     └──┬─────────┬─────────┬──────┘
-            JWT/RBAC   │  Ollama │  Redis  │  JDBC
+            JWT/RBAC   │  Groq   │  Redis  │  JDBC
                        │ (NL→SQL)│(cache + │
                        ▼         │ ratelim)▼
               ┌──────────────┐   │   ┌──────────────────────────────┐
@@ -76,13 +82,16 @@ React frontend.
               │ users ·      │   │   │  ┌────────────┐ ┌───────────┐ │
               │ audit_logs   │   ▼   │  │ read-only  │ │  admin    │ │
               └──────────────┘ Redis │  │ (queries)  │ │ (ingest)  │ │
-                                      │  └────────────┘ └───────────┘ │
+                  (Neon)     (Upstash)│  └────────────┘ └───────────┘ │
+                                      │            (Neon)              │
                                       └────────────────────────────────┘
+                       Groq = hosted LLM API (api.groq.com), called over HTTPS
 ```
 
 ```
 querySense/
 ├── pom.xml
+├── Dockerfile                  ← Multi-stage build (Maven → JRE) for cloud deploy
 ├── docker-compose.yml          ← Local infra: PostgreSQL :5440 + Redis :6379
 ├── db-init/                    ← Creates the analytics DB + read-only user on first boot
 ├── src/main/java/com/querySense/
@@ -96,7 +105,7 @@ querySense/
 │   ├── ingest/      ← CSV upload → table creation (privileged datasource)
 │   └── common/      ← Health check + global JSON error handler
 ├── src/main/resources/
-│   └── application.yaml
+│   └── application.yaml         ← All settings via ${ENV_VAR:local-default}
 └── querysense-frontend/        ← React + Vite + Tailwind SPA
 ```
 
@@ -124,7 +133,7 @@ querySense/
 3. Cache check (Redis, key = question + page + size, 10-min TTL):
    - Hit  → return the cached rows instantly (no AI, no DB).
    - Miss → continue.
-4. NL→SQL: the live schema (table + column names) and the question are sent to Ollama,
+4. NL→SQL: the live schema (table + column names) and the question are sent to Groq,
    which returns a single SELECT. The response is cleaned (markdown / stray semicolons).
 5. Safety pipeline (deterministic, JSQLParser):
    - Must parse as valid SQL.
@@ -154,7 +163,8 @@ Key safety guarantees:
 
 ## Databases
 
-Two databases, clean separation of concerns.
+Two databases, clean separation of concerns. In production these are hosted on **Neon**
+(managed PostgreSQL); locally they run in Docker.
 
 | Database | Table | Stores | Notes |
 |----------|-------|--------|-------|
@@ -183,18 +193,21 @@ ingestion path to create tables and insert rows.
 ### Example
 
 ```bash
+# Against the live API (or swap in http://localhost:8084 for local)
+BASE=https://querysense-api.onrender.com
+
 # 1. Log in
-TOKEN=$(curl -s -X POST localhost:8084/auth/login \
+TOKEN=$(curl -s -X POST $BASE/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"demo","password":"demo123"}' | jq -r .token)
 
 # 2. Upload a dataset
-curl -s -X POST localhost:8084/api/upload \
+curl -s -X POST $BASE/api/upload \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@sales.csv" -F "table=sales"
 
 # 3. Ask a question
-curl -s -X POST localhost:8084/api/query \
+curl -s -X POST $BASE/api/query \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"question":"total revenue by region"}'
@@ -209,7 +222,7 @@ curl -s -X POST localhost:8084/api/query \
 - Maven 3.9+
 - Docker
 - Node.js 18+ (for the frontend)
-- [Ollama](https://ollama.com) with a coder model pulled
+- A free **Groq API key** — sign up at [console.groq.com](https://console.groq.com) and create a key
 
 ### Steps
 
@@ -218,9 +231,8 @@ curl -s -X POST localhost:8084/api/query \
 git clone https://github.com/MayankHarnotiya/querySense.git
 cd querySense
 
-# 2. Pull the local model and make sure Ollama is running
-ollama pull qwen2.5-coder:3b
-ollama serve            # (or launch the Ollama app)
+# 2. Provide your Groq API key (the app reads GROQ_API_KEY)
+export GROQ_API_KEY=gsk_your_key_here          # Windows PowerShell: $env:GROQ_API_KEY="gsk_..."
 
 # 3. Start infrastructure (PostgreSQL :5440, Redis :6379)
 docker compose up -d
@@ -235,26 +247,37 @@ npm run dev             # → http://localhost:5173
 ```
 
 Then open the frontend, register an account, upload a CSV, and ask a question. The Vite dev
-server proxies `/api` and `/auth` to the backend, so there's no CORS to configure.
+server proxies `/api` and `/auth` to the backend, so there's no CORS to configure locally.
 
-Key local settings live in `application.yaml`: PostgreSQL on `5440`, Redis on `6379`,
-Ollama on `11434`, app on `8084`, and the model name under `spring.ai.ollama.chat.options.model`.
+Key local settings live in `application.yaml`, all expressed as `${ENV_VAR:local-default}`:
+PostgreSQL on `5440`, Redis on `6379`, the app on `8084`, the Groq base URL under
+`spring.ai.openai.base-url` (`https://api.groq.com/openai/v1` — the `/v1` is required), and
+the model under `spring.ai.openai.chat.options.model` (`llama-3.3-70b-versatile`).
+
+> **First admin:** registration always creates a `USER`. To grant yourself admin, run
+> `UPDATE users SET role='ADMIN' WHERE username='<you>';` against the `querysense` database,
+> then log out and back in so the new JWT carries the role.
 
 ---
 
 ## Deployment
 
-> Status: **in progress.** The one cloud consideration is the LLM — the local Ollama model
-> needs a GPU/RAM that free tiers don't provide. Because the project is built on **Spring AI's
-> provider abstraction**, the model is swapped for a free **hosted LLM API** (e.g. Groq or
-> Google Gemini) with a dependency + config change rather than a rewrite.
+> Status: **live.** ✅ The whole stack runs on free tiers, co-located in one region. The only
+> cloud-specific change from local was the LLM: because the project is built on **Spring AI's
+> provider abstraction**, the local Ollama model was swapped for the hosted **Groq API** with
+> a dependency + config change rather than a rewrite. The backend is containerized with a
+> multi-stage Dockerfile, and all secrets/URLs are injected as environment variables.
 
-| Component | Target Platform | Notes |
-|-----------|----------------|-------|
-| **Frontend** | Vercel / Netlify | Static build of `querysense-frontend` |
-| **API** | Render / Railway | Spring Boot service; LLM via hosted API |
-| **App + Analytics DB** | Managed PostgreSQL | Users, audit, and uploaded datasets |
-| **Cache** | Managed Redis | Caching + rate-limit counters |
+| Component | Platform | Notes |
+|-----------|----------|-------|
+| **Frontend** | **Vercel** | Static Vite build of `querysense-frontend`; backend URL via `VITE_API_BASE` |
+| **API** | **Render** | Spring Boot in Docker; LLM via hosted Groq API; free tier sleeps when idle (~50s cold start) |
+| **App + Analytics DB** | **Neon** (managed PostgreSQL) | Users, audit, and uploaded datasets; read-only + privileged roles |
+| **Cache** | **Upstash** (managed Redis) | Caching + rate-limit counters, over TLS |
+
+Cross-origin requests from the Vercel frontend to the Render API are handled by a CORS
+configuration whose allowed origins are supplied via the `CORS_ALLOWED_ORIGINS` environment
+variable (no code change to add a new origin).
 
 A planned hardening step for multi-user deployment is isolating each user's uploads into
 their own PostgreSQL schema, so datasets never collide or leak across accounts.
